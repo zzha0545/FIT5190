@@ -5,6 +5,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
 import os
+import joblib  # 用于保存和加载模型
 
 def load_data(file_path):
     """加载CSV数据文件"""
@@ -88,6 +89,79 @@ def train_model(data):
     print(f"其中性别编码: 男性(M)=1, 女性(F)=0")
     
     return model, X_test, y_test, y_pred
+
+def save_model(model, file_path='weight_prediction_model.pkl'):
+    """保存训练好的模型到文件
+    
+    参数:
+    model - 训练好的线性回归模型
+    file_path - 模型保存路径
+    
+    返回:
+    bool - 是否成功保存
+    """
+    try:
+        # 创建保存目录（如果不存在）
+        os.makedirs(os.path.dirname(file_path) if os.path.dirname(file_path) else '.', exist_ok=True)
+        
+        # 保存模型
+        joblib.dump(model, file_path)
+        print(f"模型成功保存到 {file_path}")
+        
+        # 保存模型权重信息到可读文件
+        w_height = model.coef_[0]
+        w_gender = model.coef_[1]
+        bias = model.intercept_
+        
+        weights_file = os.path.splitext(file_path)[0] + '_weights.txt'
+        with open(weights_file, 'w') as f:
+            f.write("体重预测线性模型权重\n")
+            f.write("=" * 30 + "\n")
+            f.write(f"身高系数 (w_height): {w_height:.6f}\n")
+            f.write(f"性别系数 (w_gender): {w_gender:.6f}\n")
+            f.write(f"偏置项 (bias): {bias:.6f}\n")
+            f.write("\n模型公式:\n")
+            f.write(f"体重 = {w_height:.2f} × 身高 + {w_gender:.2f} × 性别 + {bias:.2f}\n")
+            f.write("其中性别编码: 男性(M)=1, 女性(F)=0\n")
+        
+        print(f"模型权重信息保存到 {weights_file}")
+        return True
+    except Exception as e:
+        print(f"保存模型时出错: {e}")
+        return False
+
+def load_model(file_path='weight_prediction_model.pkl'):
+    """从文件加载预训练模型
+    
+    参数:
+    file_path - 模型文件路径
+    
+    返回:
+    model - 加载的模型，如果加载失败则返回None
+    """
+    try:
+        if not os.path.exists(file_path):
+            print(f"模型文件 {file_path} 不存在")
+            return None
+        
+        model = joblib.load(file_path)
+        print(f"成功从 {file_path} 加载模型")
+        
+        # 显示模型权重信息
+        w_height = model.coef_[0]
+        w_gender = model.coef_[1]
+        bias = model.intercept_
+        
+        print(f"模型信息:")
+        print(f"身高系数: {w_height:.4f}")
+        print(f"性别系数: {w_gender:.4f}")
+        print(f"偏置项: {bias:.4f}")
+        print(f"模型公式: 体重 = {w_height:.2f} × 身高 + {w_gender:.2f} × 性别 + {bias:.2f}")
+        
+        return model
+    except Exception as e:
+        print(f"加载模型时出错: {e}")
+        return None
 
 def visualize_results(data, model, X_test, y_test, y_pred):
     """可视化结果（已注释掉图像生成部分）"""
@@ -241,58 +315,87 @@ def main():
     
     # 加载数据
     try:
-        data_file = input("请输入训练数据文件路径 (默认 'student_data.csv'): ").strip()
-        if not data_file:
-            data_file = 'student_data.csv'
+        print("\n请选择操作模式:")
+        print("1 - 训练新模型")
+        print("2 - 加载已有模型进行预测")
+        mode = input("请输入选项编号 (默认: 1): ").strip()
         
-        data = load_data(data_file)
+        if mode == '2':
+            # 加载已有模型模式
+            model_file = input("请输入模型文件路径 (默认: 'weight_prediction_model.pkl'): ").strip()
+            if not model_file:
+                model_file = 'weight_prediction_model.pkl'
+            
+            model = load_model(model_file)
+            if model is None:
+                print("模型加载失败，退出程序")
+                return
+        else:
+            # 训练新模型模式
+            data_file = input("请输入训练数据文件路径 (默认 'student_data.csv'): ").strip()
+            if not data_file:
+                data_file = 'student_data.csv'
+            
+            data = load_data(data_file)
+            
+            # 显示数据基本信息
+            print("\n数据基本信息:")
+            print(data.describe())
+            
+            # 数据预处理
+            print("\n执行数据预处理...")
+            data = preprocess_data(data)
+            
+            # 训练模型
+            print("\n训练线性回归模型...")
+            model, X_test, y_test, y_pred = train_model(data)
+            
+            # 显示模型评估结果
+            print("\n模型预测性能:")
+            visualize_results(data, model, X_test, y_test, y_pred)
+            
+            # 保存模型
+            save_model_choice = input("\n是否保存模型? (y/n, 默认: y): ").strip().lower()
+            if save_model_choice != 'n':
+                model_file = input("请输入模型保存路径 (默认: 'weight_prediction_model.pkl'): ").strip()
+                if not model_file:
+                    model_file = 'weight_prediction_model.pkl'
+                
+                if save_model(model, model_file):
+                    print("模型已保存")
+                else:
+                    print("模型保存失败")
         
-        # 显示数据基本信息
-        print("\n数据预览:")
-        print(data.head())
-        print("\n数据统计描述:")
-        print(data.describe())
-        
-        # 数据预处理
-        data = preprocess_data(data)
-        
-        # 训练模型
-        print("\n训练模型...")
-        model, X_test, y_test, y_pred = train_model(data)
-        
-        # 显示模型评估指标（不生成图表）
-        print("\n模型评估指标:")
-        visualize_results(data, model, X_test, y_test, y_pred)
-        
-        # 功能选择
+        # 模型使用部分（无论是新训练的还是加载的）
         while True:
-            print("\n请选择操作:")
-            print("1. 单个预测（输入身高和性别）")
-            print("2. 批量测试（从CSV文件）")
-            print("3. 退出程序")
+            print("\n请选择使用模式:")
+            print("1 - 单个预测")
+            print("2 - 批量测试")
+            print("0 - 退出程序")
             
-            choice = input("请输入选项编号 (1-3): ").strip()
+            choice = input("请输入选项编号: ").strip()
             
-            if choice == "1":
-                # 交互式预测
-                print("\n进行单个预测:")
+            if choice == '1':
+                # 单个预测
                 try:
-                    height = float(input("请输入身高(cm): "))
+                    height = float(input("请输入身高(cm): ").strip())
                     gender = input("请输入性别(M/F): ").strip().upper()
                     
                     if gender not in ['M', 'F']:
-                        print("性别输入错误，请输入 M 或 F")
+                        print("性别输入错误，请输入 M(男) 或 F(女)")
                         continue
                     
                     predicted_weight = make_prediction(model, height, gender)
-                    print(f"预测体重: {predicted_weight:.2f} kg")
-                
+                    print(f"\n预测结果: 身高 {height}cm 的{('男' if gender=='M' else '女')}性，预测体重为 {predicted_weight:.2f} kg")
+                    
                 except ValueError:
-                    print("输入无效，请重试")
-                
-            elif choice == "2":
+                    print("输入格式错误，请确保身高是有效的数字")
+                except Exception as e:
+                    print(f"预测出错: {e}")
+            
+            elif choice == '2':
                 # 批量测试
-                test_file = input("请输入测试数据CSV文件路径: ").strip()
+                test_file = input("请输入测试数据文件路径: ").strip()
                 if not test_file:
                     print("文件路径不能为空")
                     continue
@@ -300,31 +403,30 @@ def main():
                 mae, predictions = batch_test(model, test_file)
                 
                 if predictions is not None:
-                    # 显示预测结果
-                    print("\n预测结果预览 (前5条):")
-                    print(predictions.head())
-                    
-                    # 询问是否保存结果
-                    save_option = input("\n是否保存预测结果? (y/n): ").strip().lower()
-                    if save_option == 'y':
-                        output_file = input("请输入输出文件名 (默认 'prediction_results.csv'): ").strip()
+                    save_results = input("是否保存预测结果? (y/n, 默认: n): ").strip().lower()
+                    if save_results == 'y':
+                        output_file = input("请输入结果保存路径 (默认: 'prediction_results.csv'): ").strip()
                         if not output_file:
                             output_file = 'prediction_results.csv'
                         
-                        predictions.to_csv(output_file, index=False)
-                        print(f"预测结果已保存到 {output_file}")
+                        try:
+                            predictions.to_csv(output_file, index=False)
+                            print(f"预测结果已保存到 {output_file}")
+                        except Exception as e:
+                            print(f"保存结果出错: {e}")
             
-            elif choice == "3":
-                print("退出程序")
+            elif choice == '0':
+                # 退出程序
+                print("程序已退出")
                 break
             
             else:
                 print("无效选项，请重新输入")
-    
+                
     except KeyboardInterrupt:
-        print("\n程序被中断")
+        print("\n程序被用户中断")
     except Exception as e:
-        print(f"程序出错: {e}")
+        print(f"程序运行出错: {e}")
 
 if __name__ == "__main__":
     main() 
